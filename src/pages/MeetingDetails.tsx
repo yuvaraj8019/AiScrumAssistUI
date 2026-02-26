@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getMeetingById, saveTranscript, processMeeting, getMeetingTasks } from '@/api/meetings.api';
 import {
   Box,
@@ -34,6 +34,8 @@ import {
   Error as ErrorIcon,
   OpenInNew as OpenInNewIcon,
   Description as DescriptionIcon,
+  Mic as MicIcon,
+  Stop as StopIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 
@@ -44,6 +46,57 @@ const MeetingDetails = () => {
   const theme = useTheme();
   const [transcript, setTranscript] = useState('');
   const [isPolling, setIsPolling] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const startRecording = () => {
+    if ('webkitSpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+
+      recognitionRef.current.onresult = (event: any) => {
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        if (finalTranscript) {
+          setTranscript((prev) => {
+            const newText = prev + (prev ? ' ' : '') + finalTranscript;
+            return newText;
+          });
+        }
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        setIsRecording(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        // Auto-restart if we didn't explicitly stop? 
+        // For now, let's just respect the toggle. 
+        // If we want it to be really continuous we might need to check isRecording state
+      };
+
+      recognitionRef.current.start();
+      setIsRecording(true);
+    } else {
+      alert('Web Speech API is not supported in this browser.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+    }
+  };
 
   const { data: meeting, isLoading, refetch } = useQuery({
     queryKey: ['meeting', id],
@@ -181,6 +234,26 @@ const MeetingDetails = () => {
                 <Typography variant="h6" fontWeight={600}>
                   Meeting Transcript
                 </Typography>
+                <Box flex={1} />
+                {!meeting.transcript && (
+                  <Button
+                    variant={isRecording ? 'contained' : 'outlined'}
+                    color={isRecording ? 'error' : 'primary'}
+                    startIcon={isRecording ? <StopIcon /> : <MicIcon />}
+                    onClick={isRecording ? stopRecording : startRecording}
+                    sx={{
+                      borderRadius: 20,
+                      animation: isRecording ? 'pulse 1.5s infinite' : 'none',
+                      '@keyframes pulse': {
+                        '0%': { boxShadow: '0 0 0 0 rgba(255, 82, 82, 0.7)' },
+                        '70%': { boxShadow: '0 0 0 10px rgba(255, 82, 82, 0)' },
+                        '100%': { boxShadow: '0 0 0 0 rgba(255, 82, 82, 0)' },
+                      },
+                    }}
+                  >
+                    {isRecording ? 'Stop Recording' : 'Record'}
+                  </Button>
+                )}
               </Box>
 
               {meeting.transcript ? (
@@ -356,7 +429,7 @@ const MeetingDetails = () => {
                               <Button
                                 size="small"
                                 endIcon={<OpenInNewIcon />}
-                                href={`https://yuva-raj.atlassian.net/browse/${task.externalId}`}
+                                href={`https://Sindhu.atlassian.net/browse/${task.externalId}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 sx={{
@@ -385,3 +458,4 @@ const MeetingDetails = () => {
 };
 
 export default MeetingDetails;
+ 
